@@ -798,14 +798,14 @@ void qed_driver(ExecutionContext& ec, ChemEnv& chem_env) {
 
   // create vector of length = number of cholesky vectors, with each element = lambda_x, lambda_y,
   // lambda_z this is used to add the dipole contributions to the end of the cholesky vectors.
-  Tensor<double> Zx{{CI}}, Zy{{CI}}, Zz{{CI}};
-  sch.allocate(Zx, Zy, Zz).execute();
-  sch(Zx() = 0.0)(Zy() = 0.0)(Zz() = 0.0).execute();
+  Tensor<double> Zz{{CI}};
+  sch.allocate(Zz).execute();
+  sch(Zz() = 0.0).execute();
 
   const TAMM_SIZE num_chol = chem_env.cd_context.num_chol_vecs;
 
-  tamm::update_tensor_val(Zx, {num_chol - 3}, lambda_x);
-  tamm::update_tensor_val(Zy, {num_chol - 2}, lambda_y);
+  // tamm::update_tensor_val(Zx, {num_chol - 3}, lambda_x);
+  // tamm::update_tensor_val(Zy, {num_chol - 2}, lambda_y);
   tamm::update_tensor_val(Zz, {num_chol - 1}, 1.0);
   sch.execute();
 
@@ -819,12 +819,12 @@ void qed_driver(ExecutionContext& ec, ChemEnv& chem_env) {
                dipole_x_exp, dipole_y_exp, dipole_z_exp);
   free_tensors(dipole_mo_x, dipole_mo_y, dipole_mo_z, d_nuc_x_mo, d_nuc_y_mo, d_nuc_z_mo, temp_x,
                temp_y, temp_z, temp_ao_nuc_x, temp_ao_nuc_y, temp_ao_nuc_z);
-  free_tensors(lcao, S1);
+  free_tensors(lcao, S1, Zz);
   sch.execute();
 
   TensorMap<T> f, eri, dp;
   std::tie(f, eri, dp) = extract_spin_blocks<T>(sch, chem_env, d_f1, cholVpr, dip);
-  free_tensors(d_f1, dip, cholVpr);
+  free_tensors(cholVpr);
 
   auto [residual, corr_energy] =
     ccsd_v2_driver<T>(chem_env, ec, MO, d_t1, d_t2, d_t1_1p, d_t2_1p, d_t1_2p, d_t2_2p, d_r1, d_r2,

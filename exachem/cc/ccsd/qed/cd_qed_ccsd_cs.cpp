@@ -747,14 +747,14 @@ void qed_driver(ExecutionContext& ec, ChemEnv& chem_env) {
 
   // create vector of length = number of cholesky vectors, with each element = lambda_x, lambda_y,
   // lambda_z this is used to add the dipole contributions to the end of the cholesky vectors.
-  Tensor<double> Zx{{CI}}, Zy{{CI}}, Zz{{CI}};
-  sch.allocate(Zx, Zy, Zz).execute();
-  sch(Zx() = 0.0)(Zy() = 0.0)(Zz() = 0.0).execute();
+  Tensor<double> Zz{{CI}};
+  sch.allocate(Zz).execute();
+  sch(Zz() = 0.0).execute();
 
   const TAMM_SIZE num_chol = chem_env.cd_context.num_chol_vecs;
 
-  tamm::update_tensor_val(Zx, {num_chol - 3}, lambda_x);
-  tamm::update_tensor_val(Zy, {num_chol - 2}, lambda_y);
+  // tamm::update_tensor_val(Zx, {num_chol - 3}, lambda_x);
+  // tamm::update_tensor_val(Zy, {num_chol - 2}, lambda_y);
   tamm::update_tensor_val(Zz, {num_chol - 1}, 1.0);
   sch.execute();
 
@@ -766,14 +766,15 @@ void qed_driver(ExecutionContext& ec, ChemEnv& chem_env) {
 
   free_tensors(QED_Dx, QED_Dy, QED_Dz, QED_Dx_new, QED_Dy_new, QED_Dz_new, dip_ints, array1,
                dipole_x_exp, dipole_y_exp, dipole_z_exp);
-  free_tensors(dipole_mo_x, dipole_mo_y, dipole_mo_z, d_nuc_x_mo, d_nuc_y_mo, d_nuc_z_mo, temp_x,
-               temp_y, temp_z, temp_ao_nuc_x, temp_ao_nuc_y, temp_ao_nuc_z);
+  free_tensors(/*dipole_mo_x, */ dipole_mo_y, dipole_mo_z, d_nuc_x_mo, d_nuc_y_mo, d_nuc_z_mo,
+               temp_x, temp_y, temp_z, temp_ao_nuc_x, temp_ao_nuc_y, temp_ao_nuc_z);
   free_tensors(lcao, S1);
+  free_tensors(Zz);
   sch.execute();
 
   TensorMap<T> f, chol, dp;
   std::tie(f, chol, dp) = extract_spin_blocks<T>(sch, chem_env, d_f1, cholVpr, dip);
-  free_tensors(d_f1, dip);
+  free_tensors(d_f1);
 
   auto [residual, corr_energy] =
     ccsd_v2_driver<T>(chem_env, ec, MO, d_t1, d_t2, d_t1_1p, d_t2_1p, d_t1_2p, d_t2_2p, d_r1, d_r2,
@@ -782,6 +783,126 @@ void qed_driver(ExecutionContext& ec, ChemEnv& chem_env) {
                       d_t2_2ps, f, chol, dp, omega, p_evl_sorted, ccsd_restart, files_prefix);
 
   ccsd_stats(ec, chem_env.scf_context.hf_energy, residual, corr_energy, ccsd_options.threshold);
+
+  std::string t0_1p_t0_2p_file = files_prefix + ".t0_1p_t0_2p.txt";
+  double      t0_1p            = 0.0;
+  double      t0_2p            = 0.0;
+
+  if(fs::exists(t0_1p_t0_2p_file)) {
+    std::ifstream inFile(t0_1p_t0_2p_file);
+    if(inFile.is_open()) {
+      std::string label;
+
+      inFile >> label >> t0_1p;
+      inFile >> label >> t0_2p;
+      inFile.close();
+    }
+  }
+
+  // print norms of 1p and 2p amplitudes
+  double t1_norm    = std::sqrt(tamm::norm(d_t1));
+  double t2_norm    = std::sqrt(tamm::norm(d_t2));
+  double t0_1p_norm = std::sqrt(t0_1p * t0_1p);
+  double t1_1p_norm = std::sqrt(tamm::norm(d_t1_1p));
+  double t2_1p_norm = std::sqrt(tamm::norm(d_t2_1p));
+  double t0_2p_norm = std::sqrt(t0_2p * t0_2p);
+  double t1_2p_norm = std::sqrt(tamm::norm(d_t1_2p));
+  double t2_2p_norm = std::sqrt(tamm::norm(d_t2_2p));
+
+  if(rank == 0) {
+    std::cout << "\nNorms of amplitudes:\n" << std::fixed << std::setprecision(6);
+
+    std::cout << "  T  |     0e     |     1e     |     2e     |\n"
+              << "-----|------------|------------|------------|\n";
+
+    std::cout << "  0p |            |" << std::setw(10) << t1_norm << "  |" << std::setw(10)
+              << t2_norm << "  |\n";
+
+    std::cout << "  1p |" << std::setw(10) << t0_1p_norm << "  |" << std::setw(10) << t1_1p_norm
+              << "  |" << std::setw(10) << t2_1p_norm << "  |\n";
+
+    std::cout << "  2p |" << std::setw(10) << t0_2p_norm << "  |" << std::setw(10) << t1_2p_norm
+              << "  |" << std::setw(10) << t2_2p_norm << "  |\n";
+  }
+
+  {
+    // print bilinear coupling terms
+    const TiledIndexSpace& V = MO("virt");
+    const TiledIndexSpace& O = MO("occ");
+
+    TiledIndexLabel a, b, c, d;
+    TiledIndexLabel i, j, k, l;
+
+    std::tie(a, b, c, d) = V.labels<4>("all");
+    std::tie(i, j, k, l) = O.labels<4>("all");
+
+    Tensor<double> bi_coupling{};
+    // clang-format off
+    sch
+      .allocate(bi_coupling)
+      ( bi_coupling()  = dip(i, a) * d_t1_1p(a, i) )
+      ( bi_coupling() += t0_1p * dip(i, i) )
+      ( bi_coupling() += t0_1p * dip(i, a) * d_t1(a, i) )
+    .execute();
+    // clang-format on
+    double bi_coupling_val = get_scalar(bi_coupling);
+    if(rank == 0) {
+      std::cout << std::endl
+                << "Bilinear coupling term: " << std::fixed << std::setprecision(6)
+                << bi_coupling_val << std::endl;
+    }
+    sch.deallocate(bi_coupling, dip).execute();
+
+    // print dipole self energy terms
+    Tensor<double> dse{};
+    Tensor<T>      Id{{O, O}, {1, 1}};
+    TensorMap<T>   tmps_;
+    tmps_["bin1_vo"] = Tensor<T>{{V, O}, {1, 1}};
+    tmps_["bin1_oo"] = Tensor<T>{{O, O}, {1, 1}};
+    tmps_["bin2_oo"] = Tensor<T>{{O, O}, {1, 1}};
+    tmps_["bin1"]    = Tensor<T>{};
+    tmps_["bin2"]    = Tensor<T>{};
+    Tensor<T>::allocate(&ec, dse, Id, tmps_["bin1_vo"], tmps_["bin1_oo"], tmps_["bin2_oo"],
+                        tmps_["bin1"], tmps_["bin2"]);
+
+    // clang-format off
+    sch(Id() = 0).execute();  
+    init_diagonal(ec, Id());
+    // clang-format on
+
+    // clang-format off
+    sch
+      ( dse() = 0.0 )
+      ( tmps_["bin1_vo"](b,j)  = dipole_mo_x(i,a) * d_t2(a,b,j,i) )
+      ( dse()  = -0.250 * tmps_["bin1_vo"](b,j) * dipole_mo_x(j,b) )
+      ( tmps_["bin1_vo"](a,j)  = dipole_mo_x(i,b) * d_t2(a,b,j,i) )
+      ( dse() += 0.250 * tmps_["bin1_vo"](a,j) * dipole_mo_x(j,a) )
+      ( tmps_["bin1_oo"](k,l)  = dipole_mo_x(i,k) * Id(i,l) )
+      ( tmps_["bin2_oo"](k,j)  = tmps_["bin1_oo"](k,l) * dipole_mo_x(j,l) )
+      ( dse() += 0.500 * tmps_["bin2_oo"](k,j) * Id(j,k) )
+      ( tmps_["bin1"]()  = dipole_mo_x(j,b) * d_t1(b,j) )
+      ( tmps_["bin2"]()  = dipole_mo_x(i,a) * d_t1(a,i) )
+      ( dse() += 0.500 * tmps_["bin1"]() * tmps_["bin2"]() )
+      ( tmps_["bin1"]()  = dipole_mo_x(i,l) * Id(i,l) )
+      ( tmps_["bin2"]()  = dipole_mo_x(j,k) * Id(j,k) )
+      ( dse() -= 0.500 * tmps_["bin1"]() * tmps_["bin2"]() )
+      ( tmps_["bin1_oo"](i,j)  = dipole_mo_x(i,b) * d_t1(b,j) )
+      ( tmps_["bin1_vo"](a,i)  = tmps_["bin1_oo"](i,j) * dipole_mo_x(j,a) )
+      ( dse() -= 0.500 * tmps_["bin1_vo"](a,i) * d_t1(a,i) )
+      .deallocate(dipole_mo_x).execute();
+    // clang-format on
+
+    double dse_val = get_scalar(dse);
+    if(rank == 0) {
+      std::cout << "Dipole Self-Energy term: " << std::fixed << std::setprecision(6) << dse_val
+                << std::endl
+                << std::endl;
+    }
+    sch
+      .deallocate(dse, Id, tmps_["bin1_vo"], tmps_["bin1_oo"], tmps_["bin2_oo"], tmps_["bin1"],
+                  tmps_["bin2"])
+      .execute();
+  }
 
   if(ccsd_options.writet && !ccsdstatus) {
     // write_to_disk(d_t1,t1file);
@@ -803,20 +924,6 @@ void qed_driver(ExecutionContext& ec, ChemEnv& chem_env) {
 
   cc_context.d_t1_full = d_t1;
   cc_context.d_t2_full = d_t2;
-
-  double      t0_1p            = 0.0;
-  double      t0_2p            = 0.0;
-  std::string t0_1p_t0_2p_file = files_prefix + ".t0_1p_t0_2p.txt";
-  if(fs::exists(t0_1p_t0_2p_file)) {
-    std::ifstream inFile(t0_1p_t0_2p_file);
-    if(inFile.is_open()) {
-      std::string label;
-
-      inFile >> label >> t0_1p;
-      inFile >> label >> t0_2p;
-      inFile.close();
-    }
-  }
 
   Tensor<T> d_t0_1p{}, d_t0_2p{};
   sch.allocate(d_t0_1p, d_t0_2p).execute();

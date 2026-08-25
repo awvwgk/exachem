@@ -382,6 +382,8 @@ std::tuple<double, double> ccsd_v2_driver(
             residual = 0.0;
         }
 
+        sch.deallocate(d_e).execute();
+
         chem_env.cc_context.ccsd_correlation_energy = energy;
         chem_env.cc_context.ccsd_total_energy = chem_env.scf_context.hf_energy + energy;
 
@@ -470,9 +472,9 @@ void  exachem::cc::qed_ccsd_os::qed_driver(ExecutionContext& ec, ChemEnv& chem_e
     //  double lambda_y = lambda_cav[1];
     //  double lambda_z = lambda_cav[2];
 
-    double lambda_x2 = lambda_x*lambda_x;
-    double lambda_y2 = lambda_y*lambda_y;
-    double lambda_z2 = lambda_z*lambda_z;
+    // double lambda_x2 = lambda_x*lambda_x;
+    // double lambda_y2 = lambda_y*lambda_y;
+    // double lambda_z2 = lambda_z*lambda_z;
 
     double coupling_factor_x = lambda_x * std::sqrt(omega / 2.0);
     double coupling_factor_y = lambda_y * std::sqrt(omega / 2.0);
@@ -522,8 +524,7 @@ void  exachem::cc::qed_ccsd_os::qed_driver(ExecutionContext& ec, ChemEnv& chem_e
 
     Tensor<T> dens{AO_opt, AO_opt};
     //Tensor<T> temp1{MO, AO_opt};
-    sch.allocate(dens)
-            .execute();
+    sch.allocate(dens).execute();
 
     std::string densityfile_alpha =
             files_dir + "/scf/" + sys_data.output_file_prefix + ".alpha.density";
@@ -545,9 +546,10 @@ void  exachem::cc::qed_ccsd_os::qed_driver(ExecutionContext& ec, ChemEnv& chem_e
   scf_output.rw_mat_disk(dens, densityfile_beta, debug, true); // read density
 
   // clang-format off
-  sch(dipole_x_exp()  += dens() * QED_Dx())
-            (dipole_y_exp()  += dens() * QED_Dy())
-            (dipole_z_exp()  += dens() * QED_Dz());
+  sch (dipole_x_exp()  += dens() * QED_Dx())
+      (dipole_y_exp()  += dens() * QED_Dy())
+      (dipole_z_exp()  += dens() * QED_Dz())
+      .deallocate(dens);
   sch.execute(ec.exhw());
   // clang-format on
 
@@ -761,14 +763,14 @@ void  exachem::cc::qed_ccsd_os::qed_driver(ExecutionContext& ec, ChemEnv& chem_e
 
   // create vector of length = number of cholesky vectors, with each element = lambda_x, lambda_y,
   // lambda_z this is used to add the dipole contributions to the end of the cholesky vectors.
-  Tensor<double> Zx{{CI}}, Zy{{CI}}, Zz{{CI}};
-  sch.allocate(Zx, Zy, Zz).execute();
-  sch(Zx() = 0.0)(Zy() = 0.0)(Zz() = 0.0).execute();
+  Tensor<double> Zz{{CI}};
+  sch.allocate(Zz).execute();
+  sch(Zz() = 0.0).execute();
 
   const TAMM_SIZE num_chol = chem_env.cd_context.num_chol_vecs;
 
-  tamm::update_tensor_val(Zx, {num_chol - 3}, lambda_x);
-  tamm::update_tensor_val(Zy, {num_chol - 2}, lambda_y);
+  // tamm::update_tensor_val(Zx, {num_chol - 3}, lambda_x);
+  // tamm::update_tensor_val(Zy, {num_chol - 2}, lambda_y);
   tamm::update_tensor_val(Zz, {num_chol - 1}, 1.0);
   sch.execute();
 
@@ -834,7 +836,7 @@ void  exachem::cc::qed_ccsd_os::qed_driver(ExecutionContext& ec, ChemEnv& chem_e
                dipole_x_exp, dipole_y_exp, dipole_z_exp);
   free_tensors(dipole_mo_x, dipole_mo_y, dipole_mo_z, d_nuc_x_mo, d_nuc_y_mo, d_nuc_z_mo, temp_x,
                temp_y, temp_z, temp_ao_nuc_x, temp_ao_nuc_y, temp_ao_nuc_z);
-  free_tensors(lcao, S1);
+  free_tensors(lcao, S1, Zz);
   free_tensors(cholVpr);
   //    free_tensors(d_v2);
 
