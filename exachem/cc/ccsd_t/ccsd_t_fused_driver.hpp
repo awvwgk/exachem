@@ -16,6 +16,10 @@
 #endif
 #include "exachem/cc/ccsd_t/ccsd_t_common.hpp"
 
+#include <cstddef>
+#include <span>
+#include <string>
+
 namespace exachem::cc::ccsd_t {
 
 void ccsd_t_driver(ExecutionContext& ec, ChemEnv& chem_env);
@@ -118,7 +122,9 @@ std::tuple<T, T, double, double> CCSD_T_Fused_Driver<T>::execute(
   auto                mo_tiles = MO.input_tile_sizes();
   std::vector<size_t> k_range;
   std::vector<size_t> k_offset;
-  size_t              sum = 0;
+  k_range.reserve(mo_tiles.size());
+  k_offset.reserve(mo_tiles.size());
+  size_t sum = 0;
   for(auto x: mo_tiles) {
     k_range.push_back(x);
     k_offset.push_back(sum);
@@ -166,7 +172,7 @@ std::tuple<T, T, double, double> CCSD_T_Fused_Driver<T>::execute(
   std::shared_ptr<hostEnergyReduceData_t> reduceData = std::make_shared<hostEnergyReduceData_t>();
 #endif
 
-  AtomicCounter* ac = new AtomicCounterGA(ec.pg(), 1);
+  std::unique_ptr<AtomicCounter> ac = std::make_unique<AtomicCounterGA>(ec.pg(), 1);
   ac->allocate(0);
   int64_t taskcount = 0;
   int64_t next      = ac->fetch_add(0, 1);
@@ -201,27 +207,59 @@ std::tuple<T, T, double, double> CCSD_T_Fused_Driver<T>::execute(
   T* df_host_pinned_d2_t2{nullptr};
   T* df_host_pinned_d2_v2{nullptr};
 
-  int* df_simple_s1_size = static_cast<int*>(operator new[](6 * sizeof(int), std::nothrow));
-  int* df_simple_s1_exec = static_cast<int*>(operator new[](9 * sizeof(int), std::nothrow));
-  int* df_simple_d1_size = static_cast<int*>(operator new[](7 * noab * sizeof(int), std::nothrow));
-  int* df_simple_d1_exec = static_cast<int*>(operator new[](9 * noab * sizeof(int), std::nothrow));
-  int* df_simple_d2_size = static_cast<int*>(operator new[](7 * nvab * sizeof(int), std::nothrow));
-  int* df_simple_d2_exec = static_cast<int*>(operator new[](9 * nvab * sizeof(int), std::nothrow));
+  // Host-side integer metadata buffers. RAII via std::vector; the raw int* aliases
+  // below preserve the existing call sites that expect a plain pointer.
+  std::vector<int> df_simple_s1_size_v(6);
+  std::vector<int> df_simple_s1_exec_v(9);
+  std::vector<int> df_simple_d1_size_v(7 * noab);
+  std::vector<int> df_simple_d1_exec_v(9 * noab);
+  std::vector<int> df_simple_d2_size_v(7 * nvab);
+  std::vector<int> df_simple_d2_exec_v(9 * nvab);
+  std::vector<int> host_d1_size_v(noab);
+  std::vector<int> host_d2_size_v(nvab);
 
-  int* host_d1_size = static_cast<int*>(operator new[](noab * sizeof(int), std::nothrow));
-  int* host_d2_size = static_cast<int*>(operator new[](nvab * sizeof(int), std::nothrow));
+  int* df_simple_s1_size = df_simple_s1_size_v.data();
+  int* df_simple_s1_exec = df_simple_s1_exec_v.data();
+  int* df_simple_d1_size = df_simple_d1_size_v.data();
+  int* df_simple_d1_exec = df_simple_d1_exec_v.data();
+  int* df_simple_d2_size = df_simple_d2_size_v.data();
+  int* df_simple_d2_exec = df_simple_d2_exec_v.data();
+  int* host_d1_size      = host_d1_size_v.data();
+  int* host_d2_size      = host_d2_size_v.data();
 
   size_t max_num_blocks = chem_env.ioptions.ccsd_options.ccsdt_tilesize;
   max_num_blocks        = std::ceil((max_num_blocks + 4 - 1) / 4.0);
 
+  // Integer arithmetic, not std::pow: std::pow returns a double, which is neither exact nor
+  // guaranteed to round the same way at the matching deallocation -- and this value sizes
+  // real allocations on both the GPU and CPU paths.
+  size_t const num_energy_elems = max_num_blocks * max_num_blocks * max_num_blocks *
+                                  max_num_blocks * max_num_blocks * max_num_blocks * 2;
+
+  // Neither tamm::getPinnedMem nor operator new[](std::nothrow) throws on failure; both
+  // return null. Unchecked, the null reaches a kernel and faults far from here.
+  auto check_host_alloc = [](const void* p, std::size_t nelems, const char* what) {
+    if(p == nullptr)
+      tamm::tamm_terminate("[CCSD(T)] host allocation failed for " + std::string{what} + " (" +
+                           std::to_string(nelems * sizeof(T)) + " bytes)");
+  };
+
 #if defined(USE_CUDA) || defined(USE_HIP) || defined(USE_DPCPP)
-  auto& memDevPool       = RMMMemoryManager::getInstance().getDeviceMemoryPool();
-  T*    df_dev_s1_t1_all = static_cast<T*>(memDevPool.allocate(sizeof(T) * size_T_s1_t1));
-  T*    df_dev_s1_v2_all = static_cast<T*>(memDevPool.allocate(sizeof(T) * size_T_s1_v2));
-  T*    df_dev_d1_t2_all = static_cast<T*>(memDevPool.allocate(sizeof(T) * size_T_d1_t2));
-  T*    df_dev_d1_v2_all = static_cast<T*>(memDevPool.allocate(sizeof(T) * size_T_d1_v2));
-  T*    df_dev_d2_t2_all = static_cast<T*>(memDevPool.allocate(sizeof(T) * size_T_d2_t2));
-  T*    df_dev_d2_v2_all = static_cast<T*>(memDevPool.allocate(sizeof(T) * size_T_d2_v2));
+  // Spans own these pool blocks; .data() feeds the kernel APIs below. The span carries its
+  // length, so each deallocate matches its allocation by construction.
+  auto&        memDevPool        = RMMMemoryManager::getInstance().getDeviceMemoryPool();
+  std::span<T> df_dev_s1_t1_span = memDevPool.template allocate_span<T>(size_T_s1_t1);
+  std::span<T> df_dev_s1_v2_span = memDevPool.template allocate_span<T>(size_T_s1_v2);
+  std::span<T> df_dev_d1_t2_span = memDevPool.template allocate_span<T>(size_T_d1_t2);
+  std::span<T> df_dev_d1_v2_span = memDevPool.template allocate_span<T>(size_T_d1_v2);
+  std::span<T> df_dev_d2_t2_span = memDevPool.template allocate_span<T>(size_T_d2_t2);
+  std::span<T> df_dev_d2_v2_span = memDevPool.template allocate_span<T>(size_T_d2_v2);
+  T*           df_dev_s1_t1_all  = df_dev_s1_t1_span.data();
+  T*           df_dev_s1_v2_all  = df_dev_s1_v2_span.data();
+  T*           df_dev_d1_t2_all  = df_dev_d1_t2_span.data();
+  T*           df_dev_d1_v2_all  = df_dev_d1_v2_span.data();
+  T*           df_dev_d2_t2_all  = df_dev_d2_t2_span.data();
+  T*           df_dev_d2_v2_all  = df_dev_d2_v2_span.data();
 
   df_host_pinned_s1_t1 = static_cast<T*>(tamm::getPinnedMem(sizeof(T) * size_T_s1_t1));
   df_host_pinned_s1_v2 = static_cast<T*>(tamm::getPinnedMem(sizeof(T) * size_T_s1_v2));
@@ -230,8 +268,15 @@ std::tuple<T, T, double, double> CCSD_T_Fused_Driver<T>::execute(
   df_host_pinned_d2_t2 = static_cast<T*>(tamm::getPinnedMem(sizeof(T) * size_T_d2_t2));
   df_host_pinned_d2_v2 = static_cast<T*>(tamm::getPinnedMem(sizeof(T) * size_T_d2_v2));
 
-  T* df_host_energies =
-    static_cast<T*>(tamm::getPinnedMem(sizeof(T) * std::pow(max_num_blocks, 6) * 2));
+  T* df_host_energies = static_cast<T*>(tamm::getPinnedMem(sizeof(T) * num_energy_elems));
+
+  check_host_alloc(df_host_pinned_s1_t1, size_T_s1_t1, "s1_t1");
+  check_host_alloc(df_host_pinned_s1_v2, size_T_s1_v2, "s1_v2");
+  check_host_alloc(df_host_pinned_d1_t2, size_T_d1_t2, "d1_t2");
+  check_host_alloc(df_host_pinned_d1_v2, size_T_d1_v2, "d1_v2");
+  check_host_alloc(df_host_pinned_d2_t2, size_T_d2_t2, "d2_t2");
+  check_host_alloc(df_host_pinned_d2_v2, size_T_d2_v2, "d2_v2");
+  check_host_alloc(df_host_energies, num_energy_elems, "energies");
 
 #else // cpu
   df_host_pinned_s1_t1 = static_cast<T*>(operator new[](size_T_s1_t1 * sizeof(T), std::nothrow));
@@ -240,13 +285,20 @@ std::tuple<T, T, double, double> CCSD_T_Fused_Driver<T>::execute(
   df_host_pinned_d1_v2 = static_cast<T*>(operator new[](size_T_d1_v2 * sizeof(T), std::nothrow));
   df_host_pinned_d2_t2 = static_cast<T*>(operator new[](size_T_d2_t2 * sizeof(T), std::nothrow));
   df_host_pinned_d2_v2 = static_cast<T*>(operator new[](size_T_d2_v2 * sizeof(T), std::nothrow));
-  T* df_host_energies =
-    static_cast<T*>(operator new[](std::pow(max_num_blocks, 6) * 2 * sizeof(T), std::nothrow));
+  T* df_host_energies = static_cast<T*>(operator new[](num_energy_elems * sizeof(T), std::nothrow));
+
+  check_host_alloc(df_host_pinned_s1_t1, size_T_s1_t1, "s1_t1");
+  check_host_alloc(df_host_pinned_s1_v2, size_T_s1_v2, "s1_v2");
+  check_host_alloc(df_host_pinned_d1_t2, size_T_d1_t2, "d1_t2");
+  check_host_alloc(df_host_pinned_d1_v2, size_T_d1_v2, "d1_v2");
+  check_host_alloc(df_host_pinned_d2_t2, size_T_d2_t2, "d2_t2");
+  check_host_alloc(df_host_pinned_d2_v2, size_T_d2_v2, "d2_v2");
+  check_host_alloc(df_host_energies, num_energy_elems, "energies");
 #endif
 
 #if defined(USE_CUDA) || defined(USE_HIP) || defined(USE_DPCPP)
-  T* df_dev_energies =
-    static_cast<T*>(memDevPool.allocate(sizeof(T) * std::pow(max_num_blocks, 6) * 2));
+  std::span<T> df_dev_energies_span = memDevPool.template allocate_span<T>(num_energy_elems);
+  T*           df_dev_energies      = df_dev_energies_span.data();
 #endif
 
   // int num_task = 0;
@@ -492,24 +544,16 @@ std::tuple<T, T, double, double> CCSD_T_Fused_Driver<T>::execute(
   energy1 = energy_l[0];
   energy2 = energy_l[1];
 
-  operator delete[](df_simple_s1_exec);
-  operator delete[](df_simple_s1_size);
-  operator delete[](df_simple_d1_size);
-  operator delete[](df_simple_d1_exec);
-  operator delete[](df_simple_d2_size);
-  operator delete[](df_simple_d2_exec);
-
-  operator delete[](host_d1_size);
-  operator delete[](host_d2_size);
+  // df_simple_*/host_d*_size freed automatically when their *_v vectors go out of scope
 
 #if defined(USE_CUDA) || defined(USE_HIP) || defined(USE_DPCPP)
-  memDevPool.deallocate(df_dev_s1_t1_all, sizeof(T) * size_T_s1_t1);
-  memDevPool.deallocate(df_dev_s1_v2_all, sizeof(T) * size_T_s1_v2);
-  memDevPool.deallocate(df_dev_d1_t2_all, sizeof(T) * size_T_d1_t2);
-  memDevPool.deallocate(df_dev_d1_v2_all, sizeof(T) * size_T_d1_v2);
-  memDevPool.deallocate(df_dev_d2_t2_all, sizeof(T) * size_T_d2_t2);
-  memDevPool.deallocate(df_dev_d2_v2_all, sizeof(T) * size_T_d2_v2);
-  memDevPool.deallocate(df_dev_energies, sizeof(T) * std::pow(max_num_blocks, 6) * 2);
+  memDevPool.deallocate(df_dev_s1_t1_span);
+  memDevPool.deallocate(df_dev_s1_v2_span);
+  memDevPool.deallocate(df_dev_d1_t2_span);
+  memDevPool.deallocate(df_dev_d1_v2_span);
+  memDevPool.deallocate(df_dev_d2_t2_span);
+  memDevPool.deallocate(df_dev_d2_v2_span);
+  memDevPool.deallocate(df_dev_energies_span);
 
   tamm::freePinnedMem(df_host_pinned_s1_t1);
   tamm::freePinnedMem(df_host_pinned_s1_v2);
@@ -540,7 +584,7 @@ std::tuple<T, T, double, double> CCSD_T_Fused_Driver<T>::execute(
 
   next = ac->fetch_add(0, 1);
   ac->deallocate();
-  delete ac;
+  // ac deleted automatically when the unique_ptr goes out of scope
 
   return std::make_tuple(energy1, energy2, ccsd_t_time, total_t_time);
 }
@@ -560,7 +604,9 @@ void CCSD_T_Fused_Driver<T>::calculate_performance_ops(ChemEnv& chem_env, Execut
   auto                mo_tiles = MO.input_tile_sizes();
   std::vector<size_t> k_range;
   std::vector<size_t> k_offset;
-  size_t              sum = 0;
+  k_range.reserve(mo_tiles.size());
+  k_offset.reserve(mo_tiles.size());
+  size_t sum = 0;
   for(auto x: mo_tiles) {
     k_range.push_back(x);
     k_offset.push_back(sum);

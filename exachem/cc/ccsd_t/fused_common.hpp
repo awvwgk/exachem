@@ -14,6 +14,8 @@
 #include "exachem/cc/ccsd_t/ccsd_t_all_fused_singles.hpp"
 #include "exachem/cc/ccsd_t/ccsd_t_common.hpp"
 
+#include <vector>
+
 template<typename T>
 class CCSD_T_Fused_Common {
 public:
@@ -43,12 +45,19 @@ public:
     // long double total_num_ops_total = 0;
 
     //
-    int* df_simple_s1_size = (int*) malloc(sizeof(int) * (6));
-    int* df_simple_s1_exec = (int*) malloc(sizeof(int) * (9));
-    int* df_simple_d1_size = (int*) malloc(sizeof(int) * (7 * noab));
-    int* df_simple_d1_exec = (int*) malloc(sizeof(int) * (9 * noab));
-    int* df_simple_d2_size = (int*) malloc(sizeof(int) * (7 * nvab));
-    int* df_simple_d2_exec = (int*) malloc(sizeof(int) * (9 * nvab));
+    std::vector<int> df_simple_s1_size_v(6);
+    std::vector<int> df_simple_s1_exec_v(9);
+    std::vector<int> df_simple_d1_size_v(7 * noab);
+    std::vector<int> df_simple_d1_exec_v(9 * noab);
+    std::vector<int> df_simple_d2_size_v(7 * nvab);
+    std::vector<int> df_simple_d2_exec_v(9 * nvab);
+
+    int* df_simple_s1_size = df_simple_s1_size_v.data();
+    int* df_simple_s1_exec = df_simple_s1_exec_v.data();
+    int* df_simple_d1_size = df_simple_d1_size_v.data();
+    int* df_simple_d1_exec = df_simple_d1_exec_v.data();
+    int* df_simple_d2_size = df_simple_d2_size_v.data();
+    int* df_simple_d2_exec = df_simple_d2_exec_v.data();
 
     //
     unsigned int init_id = rank;
@@ -117,12 +126,7 @@ public:
     // printf ("[%s] total task >> s1: %lu, d1: %lu, d2: %lu >> total: %lu\n", __func__,
     // total_num_ops_s1, total_num_ops_d1, total_num_ops_d2, total_overall);
 
-    free(df_simple_s1_size);
-    free(df_simple_s1_exec);
-    free(df_simple_d1_size);
-    free(df_simple_d1_exec);
-    free(df_simple_d2_size);
-    free(df_simple_d2_exec);
+    // buffers freed automatically when the *_v vectors go out of scope
     //
     return total_overall;
   }

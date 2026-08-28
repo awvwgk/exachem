@@ -226,8 +226,8 @@ public:
             int size[4] = {(int) k_range[p4b], (int) k_range[p5b], (int) k_range[h7b],
                            (int) k_range[h1b]};
 
-            auto plan = hptt::create_plan(perm, 4, -1.0, &k_a[0], size, NULL, 0, &k_a_sort[0], NULL,
-                                          hptt::ESTIMATE, 1, NULL, true);
+            auto plan = hptt::create_plan(perm, 4, -1.0, &k_a[0], size, nullptr, 0, &k_a_sort[0],
+                                          nullptr, hptt::ESTIMATE, 1, nullptr, true);
             plan->execute();
           }
           if(h1b <= h7b) {
@@ -241,8 +241,8 @@ public:
             int size[4] = {(int) k_range[p4b], (int) k_range[p5b], (int) k_range[h1b],
                            (int) k_range[h7b]};
 
-            auto plan = hptt::create_plan(perm, 4, 1.0, &k_a[0], size, NULL, 0, &k_a_sort[0], NULL,
-                                          hptt::ESTIMATE, 1, NULL, true);
+            auto plan = hptt::create_plan(perm, 4, 1.0, &k_a[0], size, nullptr, 0, &k_a_sort[0],
+                                          nullptr, hptt::ESTIMATE, 1, nullptr, true);
             plan->execute();
           }
           value = k_a_sort;
@@ -285,8 +285,8 @@ public:
             int size[4] = {(int) k_range[h2b], (int) k_range[h3b], (int) k_range[h7b],
                            (int) k_range[p6b]};
 
-            auto plan = hptt::create_plan(perm, 4, 1.0, &k_b[0], size, NULL, 0, &k_b_sort[0], NULL,
-                                          hptt::ESTIMATE, 1, NULL, true);
+            auto plan = hptt::create_plan(perm, 4, 1.0, &k_b[0], size, nullptr, 0, &k_b_sort[0],
+                                          nullptr, hptt::ESTIMATE, 1, nullptr, true);
             plan->execute();
           }
           value = k_b_sort;

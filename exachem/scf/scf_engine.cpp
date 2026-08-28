@@ -581,8 +581,8 @@ void exachem::scf::SCFEngine::setup_density_fitting(ExecutionContext& exc, ChemE
     scf_data.tdfAOt = TiledIndexSpace{scf_data.dfAO, scf_data.dfAO_tiles};
     chem_env.sys_data.results["output"]["system_info"]["ndf"] = chem_env.sys_data.ndf;
   }
-  std::unique_ptr<DFFockEngine> dffockengine(
-    scf_data.do_dens_fit ? new DFFockEngine(chem_env.shells, scf_data.dfbs) : nullptr);
+  std::unique_ptr<DFFockEngine> dffockengine =
+    scf_data.do_dens_fit ? std::make_unique<DFFockEngine>(chem_env.shells, scf_data.dfbs) : nullptr;
   // End setup for fitting basis
 
 } // setup_density_fitting

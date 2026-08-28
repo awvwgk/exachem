@@ -620,11 +620,11 @@ void Cholesky_2E<TensorType>::cholesky_2e(ExecutionContext& ec, ChemEnv& chem_en
 
         for(size_t s2 = s2range_start; s2 <= s2range_end; ++s2) {
           if(s2 > s1) {
-            auto s2spl = scf_data.obs_shellpair_list[s2];
+            const auto& s2spl = scf_data.obs_shellpair_list[s2];
             if(std::find(s2spl.begin(), s2spl.end(), s1) == s2spl.end()) continue;
           }
           else {
-            auto s2spl = scf_data.obs_shellpair_list[s1];
+            const auto& s2spl = scf_data.obs_shellpair_list[s1];
             if(std::find(s2spl.begin(), s2spl.end(), s2) == s2spl.end()) continue;
           }
 
@@ -746,13 +746,13 @@ void Cholesky_2E<TensorType>::cholesky_2e(ExecutionContext& ec, ChemEnv& chem_en
           auto n3   = shells[s3].size();
           auto dimi = curshelloffset_i + AO_tiles[s3];
 
-          auto s3spl     = obs_shellpair_list.at(s3);
-          auto sp34_iter = s3spl.begin();
+          const auto& s3spl     = obs_shellpair_list.at(s3);
+          auto        sp34_iter = s3spl.begin();
 
           auto curshelloffset_j = 0U;
           for(Index s4 = s4range_start; s4 <= s4range_end; ++s4) {
             if(s4 > s3) {
-              auto s4spl = scf_data.obs_shellpair_list[s4];
+              const auto& s4spl = scf_data.obs_shellpair_list[s4];
               if(std::find(s4spl.begin(), s4spl.end(), s3) == s4spl.end()) {
                 curshelloffset_j += AO_tiles[s4];
                 continue;
@@ -905,11 +905,11 @@ void Cholesky_2E<TensorType>::cholesky_2e(ExecutionContext& ec, ChemEnv& chem_en
 
           for(Index s4 = s4range_start; s4 <= s4range_end; ++s4) {
             if(s4 > s3) {
-              auto s2spl = obs_shellpair_list[s4];
+              const auto& s2spl = obs_shellpair_list[s4];
               if(std::find(s2spl.begin(), s2spl.end(), s3) == s2spl.end()) continue;
             }
             else {
-              auto s2spl = obs_shellpair_list[s3];
+              const auto& s2spl = obs_shellpair_list[s3];
               if(std::find(s2spl.begin(), s2spl.end(), s4) == s2spl.end()) continue;
             }
 

@@ -168,11 +168,11 @@ void exachem::scf::SCFGuess<T>::compute_dipole_ints(ExecutionContext& ec, const 
         // if (s2>s1) continue;
 
         if(s2 > s1) {
-          auto s2spl = spvars.obs_shellpair_list.at(s2);
+          const auto& s2spl = spvars.obs_shellpair_list.at(s2);
           if(std::find(s2spl.begin(), s2spl.end(), s1) == s2spl.end()) continue;
         }
         else {
-          auto s2spl = spvars.obs_shellpair_list.at(s1);
+          const auto& s2spl = spvars.obs_shellpair_list.at(s1);
           if(std::find(s2spl.begin(), s2spl.end(), s2) == s2spl.end()) continue;
         }
 
@@ -287,11 +287,11 @@ void exachem::scf::SCFGuess<T>::compute_1body_ints(ExecutionContext& ec, const S
         // if (s2>s1) continue;
 
         if(s2 > s1) {
-          auto s2spl = scf_data.obs_shellpair_list.at(s2);
+          const auto& s2spl = scf_data.obs_shellpair_list.at(s2);
           if(std::find(s2spl.begin(), s2spl.end(), s1) == s2spl.end()) continue;
         }
         else {
-          auto s2spl = scf_data.obs_shellpair_list.at(s1);
+          const auto& s2spl = scf_data.obs_shellpair_list.at(s1);
           if(std::find(s2spl.begin(), s2spl.end(), s2) == s2spl.end()) continue;
         }
 
@@ -359,10 +359,11 @@ void exachem::scf::SCFGuess<T>::compute_ecp_ints(
   for(const auto& ecp: ecps)
     if(ecp.L > ecp_maxam) ecp_maxam = ecp.L;
 
-  size_t  size_       = (maxam + 1) * (maxam + 2) * (maxam + 1) * (maxam + 2) / 4;
-  double* buffer_     = new double[size_];
-  double* buffer_sph_ = new double[size_];
-  memset(buffer_, 0, size_ * sizeof(double));
+  size_t size_ = (maxam + 1) * (maxam + 2) * (maxam + 1) * (maxam + 2) / 4;
+  // buffer_ is sized to ncartesian(maxam)^2, which upper-bounds every per-shell-pair
+  // size_ = ncartesian(l1) * ncartesian(l2) computed inside the lambda below.
+  std::vector<double> buffer_(size_, 0.0);
+  std::vector<double> buffer_sph_(size_, 0.0);
 
   // TODO: should be modifiable by user input
   const double           tolerance = 1e-17;
@@ -455,16 +456,17 @@ void exachem::scf::SCFGuess<T>::compute_ecp_ints(
 
         // compute shell pair; return is the pointer to the buffer
         size_ = shells[s1].ncartesian() * shells[s2].ncartesian();
-        memset(buffer_, 0, size_ * sizeof(double));
-        memset(buffer_sph_, 0, size_ * sizeof(double));
+        std::fill_n(buffer_.begin(), size_, 0.0);
+        std::fill_n(buffer_sph_.begin(), size_, 0.0);
         libecpint::TwoIndex<double> results;
         for(size_t i = 0; i < nab.size(); i++) {
           const libecpint::ECP& U = ecps[nab[i]];
           engine.compute_shell_pair(U, LibECPShell1, LibECPShell2, results);
-          std::transform(results.data.begin(), results.data.end(), buffer_, buffer_,
+          std::transform(results.data.begin(), results.data.end(), buffer_.data(), buffer_.data(),
                          std::plus<double>());
         }
-        libint2::solidharmonics::tform(shells[s1].l, shells[s2].l, buffer_, buffer_sph_);
+        libint2::solidharmonics::tform(shells[s1].l, shells[s2].l, buffer_.data(),
+                                       buffer_sph_.data());
 
         // "map" buffer to a const Eigen Matrix, and copy it to the
         // corresponding blocks of the result
@@ -490,8 +492,6 @@ void exachem::scf::SCFGuess<T>::compute_ecp_ints(
     tensor1e.put(blockid, dbuf);
   };
   block_for(ec, tensor1e(), compute_ecp_ints_lambda);
-  delete[] buffer_;
-  delete[] buffer_sph_;
 } // END of compute_ecp_ints
 
 template<typename T>
@@ -550,11 +550,11 @@ void exachem::scf::SCFGuess<T>::compute_pchg_ints(
         // if (s2>s1) continue;
 
         if(s2 > s1) {
-          auto s2spl = scf_data.obs_shellpair_list.at(s2);
+          const auto& s2spl = scf_data.obs_shellpair_list.at(s2);
           if(std::find(s2spl.begin(), s2spl.end(), s1) == s2spl.end()) continue;
         }
         else {
-          auto s2spl = scf_data.obs_shellpair_list.at(s1);
+          const auto& s2spl = scf_data.obs_shellpair_list.at(s1);
           if(std::find(s2spl.begin(), s2spl.end(), s2) == s2spl.end()) continue;
         }
 
@@ -1266,8 +1266,7 @@ void exachem::scf::SCFGuess<T>::compute_sad_guess(ExecutionContext& ec, ChemEnv&
     auto shell2bf = obs.shell2bf();
 
     // Form intial guess of Fock matrix and Density matrix for the present basis
-    const auto Ft_a_atom = H_atom_eig;
-    const auto Ft_b_atom = H_atom_eig;
+    [[maybe_unused]] const auto Ft_a_atom = H_atom_eig;
 
     // if(rank == 0) cout << std::setprecision(6) << "Ft_a_atom: " << endl << Ft_a_atom << endl;
 
@@ -1315,9 +1314,9 @@ void exachem::scf::SCFGuess<T>::compute_sad_guess(ExecutionContext& ec, ChemEnv&
         auto n1        = obs[s1].size();
         auto sp12_iter = scf_data.obs_shellpair_data_atom.at(s1).begin();
 
-        auto s2     = blockid[1];
-        auto s2spl  = scf_data.obs_shellpair_list_atom.at(s1);
-        auto s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
+        auto        s2     = blockid[1];
+        const auto& s2spl  = scf_data.obs_shellpair_list_atom.at(s1);
+        auto        s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
         if(s2_itr == s2spl.end()) return;
         auto s2_pos    = std::distance(s2spl.begin(), s2_itr);
         auto bf2_first = shell2bf[s2];
@@ -1750,11 +1749,11 @@ void exachem::scf::SCFGuess<T>::compute_1body_ints_deriv(ExecutionContext&      
         // if (s2>s1) continue;
 
         if(s2 > s1) {
-          auto s2spl = scf_data.obs_shellpair_list.at(s2);
+          const auto& s2spl = scf_data.obs_shellpair_list.at(s2);
           if(std::find(s2spl.begin(), s2spl.end(), s1) == s2spl.end()) continue;
         }
         else {
-          auto s2spl = scf_data.obs_shellpair_list.at(s1);
+          const auto& s2spl = scf_data.obs_shellpair_list.at(s1);
           if(std::find(s2spl.begin(), s2spl.end(), s2) == s2spl.end()) continue;
         }
 

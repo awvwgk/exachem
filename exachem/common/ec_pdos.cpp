@@ -64,7 +64,7 @@ void ECPDOS::write_pdos(ChemEnv& chem_env, Matrix& S, Matrix& C_a, std::vector<d
   pdosfile << std::scientific << std::setprecision(6);
   for(size_t igrid = 0; igrid < npoints; igrid++) {
     pdosfile << std::setw(16) << egrid[igrid] * ha2ev << std::setw(16)
-             << pdos_atom(0, igrid) / ha2ev << std::endl;
+             << pdos_atom(0, igrid) / ha2ev << '\n';
   }
 
   for(size_t iatom = 0; iatom < natoms; iatom++) {
@@ -136,7 +136,7 @@ void ECPDOS::write_pdos(ChemEnv& chem_env, Matrix& S, Matrix& C_a, std::vector<d
     for(size_t igrid = 0; igrid < npoints; igrid++) {
       pdosfile << std::setw(16) << egrid[igrid] * ha2ev;
       for(size_t l = 0; l <= lmax_at; l++) pdosfile << std::setw(16) << pdos_atom(l, igrid) / ha2ev;
-      pdosfile << std::endl;
+      pdosfile << '\n';
     }
   }
   pdosfile.close();

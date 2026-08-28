@@ -34,7 +34,6 @@ void exachem::cc::ccsd_t::CCSD_T_Driver<T>::ccsd_t_driver(ExecutionContext& ec, 
   cc_context.compute.set(true, false); // compute ft12 in full, v2 is not required.
   exachem::cc::ccsd::cd_ccsd_driver(ec, chem_env);
 
-  std::string files_dir    = chem_env.get_files_dir();
   std::string files_prefix = chem_env.get_files_prefix();
 
   ExecutionHW ex_hw = ec.exhw();
@@ -99,6 +98,7 @@ void exachem::cc::ccsd_t::CCSD_T_Driver<T>::ccsd_t_driver(ExecutionContext& ec, 
 
     auto                mo_tiles = MO1.input_tile_sizes();
     std::vector<size_t> k_range;
+    k_range.reserve(mo_tiles.size());
     for(auto x: mo_tiles) k_range.push_back(x);
     size_t max_pdim = 0;
     size_t max_hdim = 0;

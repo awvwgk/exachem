@@ -51,7 +51,6 @@ namespace exachem::cc::gfcc {
     ExecutionContext& sub_ec = (*chem_env.cc_context.sub_ec);
   
     const int nva = chem_env.sys_data.n_vir_alpha;
-    const int total_orbitals = chem_env.sys_data.nmo;
   
     const TiledIndexSpace& O = MO("occ");
     const TiledIndexSpace& V = MO("virt");

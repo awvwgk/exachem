@@ -18,6 +18,11 @@ inline void jacobi(ExecutionContext& ec, Tensor<T>& d_r, Tensor<T>& d_t, T shift
                    std::vector<double>& evl_sorted, const TAMM_SIZE& n_occ_alpha,
                    const TAMM_SIZE& n_occ_beta) {
   // EXPECTS(transpose == false);
+  // Loop-invariant: split evl_sorted once instead of per block.
+  const TAMM_SIZE           noab = n_occ_alpha + n_occ_beta;
+  const std::vector<double> p_evl_sorted_occ(evl_sorted.begin(), evl_sorted.begin() + noab);
+  const std::vector<double> p_evl_sorted_virt(evl_sorted.begin() + noab, evl_sorted.end());
+
   block_for(ec, d_r(), [&](IndexVector blockid) {
     const TAMM_SIZE rsize = d_r.block_size(blockid);
     std::vector<T>  rbuf(rsize);
@@ -29,12 +34,6 @@ inline void jacobi(ExecutionContext& ec, Tensor<T>& d_r, Tensor<T>& d_t, T shift
 
     auto& rtiss       = d_r.tiled_index_spaces();
     auto  rblock_dims = d_r.block_dims(blockid);
-
-    TAMM_SIZE           noab = n_occ_alpha + n_occ_beta;
-    std::vector<double> p_evl_sorted_occ(noab);
-    std::vector<double> p_evl_sorted_virt(evl_sorted.size() - noab);
-    std::copy(evl_sorted.begin(), evl_sorted.begin() + noab, p_evl_sorted_occ.begin());
-    std::copy(evl_sorted.begin() + noab, evl_sorted.end(), p_evl_sorted_virt.begin());
 
     if(d_r.num_modes() == 2) {
       auto ioff  = rtiss[0].tile_offset(blockid[0]);
@@ -155,6 +154,16 @@ inline void jacobi_cs(ExecutionContext& ec, Tensor<T>& d_r, Tensor<T>& d_t, T sh
                       std::vector<double>& evl_sorted, const TAMM_SIZE& n_occ_alpha,
                       const TAMM_SIZE& n_vir_alpha, const bool not_spin_orbital = false) {
   // EXPECTS(transpose == false);
+  // Loop-invariant: split evl_sorted once instead of per block.
+  const TAMM_SIZE           noa  = n_occ_alpha;
+  const TAMM_SIZE           noab = n_occ_alpha + n_occ_alpha;
+  const TAMM_SIZE           nva  = n_vir_alpha;
+  const std::vector<double> p_evl_sorted_occ(evl_sorted.begin(), evl_sorted.begin() + noa);
+  const std::vector<double> p_evl_sorted_virt =
+    not_spin_orbital
+      ? std::vector<double>(evl_sorted.begin() + noa, evl_sorted.begin() + noa + nva)
+      : std::vector<double>(evl_sorted.begin() + noab, evl_sorted.begin() + noab + nva);
+
   block_for(ec, d_r(), [&](IndexVector blockid) {
     const TAMM_SIZE rsize = d_r.block_size(blockid);
     std::vector<T>  rbuf(rsize);
@@ -166,19 +175,6 @@ inline void jacobi_cs(ExecutionContext& ec, Tensor<T>& d_r, Tensor<T>& d_t, T sh
 
     auto& rtiss       = d_r.tiled_index_spaces();
     auto  rblock_dims = d_r.block_dims(blockid);
-
-    TAMM_SIZE           noa  = n_occ_alpha;
-    TAMM_SIZE           noab = n_occ_alpha + n_occ_alpha;
-    TAMM_SIZE           nva  = n_vir_alpha;
-    std::vector<double> p_evl_sorted_occ(noa);
-    std::vector<double> p_evl_sorted_virt(nva);
-    std::copy(evl_sorted.begin(), evl_sorted.begin() + noa, p_evl_sorted_occ.begin());
-    if(not_spin_orbital)
-      std::copy(evl_sorted.begin() + noa, evl_sorted.begin() + noa + nva,
-                p_evl_sorted_virt.begin());
-    else
-      std::copy(evl_sorted.begin() + noab, evl_sorted.begin() + noab + nva,
-                p_evl_sorted_virt.begin());
 
     if(d_r.num_modes() == 2) {
       auto ioff  = rtiss[0].tile_offset(blockid[0]);
@@ -254,6 +250,11 @@ inline void jacobi_eom(ExecutionContext& ec, LabeledTensor<T> d_r_lt, LabeledTen
   Tensor<T> d_r = d_r_lt.tensor();
   Tensor<T> d_t = d_t_lt.tensor();
 
+  // Loop-invariant: split evl_sorted once instead of per block.
+  const TAMM_SIZE           noab = n_occ_alpha + n_occ_beta;
+  const std::vector<double> p_evl_sorted_occ(evl_sorted.begin(), evl_sorted.begin() + noab);
+  const std::vector<double> p_evl_sorted_virt(evl_sorted.begin() + noab, evl_sorted.end());
+
   block_for(ec, d_r_lt, [&](IndexVector bid) {
     IndexVector blockid = internal::translate_blockid(bid, d_r_lt);
 
@@ -268,12 +269,6 @@ inline void jacobi_eom(ExecutionContext& ec, LabeledTensor<T> d_r_lt, LabeledTen
     // auto& rtiss      = d_r.tiled_index_spaces();
     auto rblock_dims   = d_r.block_dims(blockid);
     auto rblock_offset = d_r.block_offsets(blockid);
-
-    TAMM_SIZE           noab = n_occ_alpha + n_occ_beta;
-    std::vector<double> p_evl_sorted_occ(noab);
-    std::vector<double> p_evl_sorted_virt(evl_sorted.size() - noab);
-    std::copy(evl_sorted.begin(), evl_sorted.begin() + noab, p_evl_sorted_occ.begin());
-    std::copy(evl_sorted.begin() + noab, evl_sorted.end(), p_evl_sorted_virt.begin());
 
     if(d_r.num_modes() == 3) {
       std::vector<size_t> ioff;

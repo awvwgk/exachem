@@ -317,12 +317,15 @@ exachem::scf::SCFCompute<T>::compute_AO_tiles(const ExecutionContext& ec, const 
   if(is_df) tile_size = scf_options.dfAO_tilesize;
 
   std::vector<Tile> AO_tiles;
+  AO_tiles.reserve(shells.size());
   for(const auto& s: shells) AO_tiles.push_back(s.size());
   if(rank == 0) cout << "Number of AO tiles = " << AO_tiles.size() << endl;
 
   tamm::Tile          est_ts = 0;
   std::vector<Tile>   AO_opttiles;
   std::vector<size_t> shell_tile_map;
+  AO_opttiles.reserve(shells.size());
+  shell_tile_map.reserve(shells.size());
   for(size_t s = 0; s < shells.size(); s++) {
     est_ts += shells[s].size();
     if(est_ts >= (size_t) tile_size) {

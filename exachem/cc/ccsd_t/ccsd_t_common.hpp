@@ -40,7 +40,7 @@ using event_ptr_t = std::shared_ptr<tamm::gpuEvent_t>;
   }
 #endif // USE_HIP
 
-typedef long Integer;
+using Integer = long;
 // static int notset;
 
 #define DIV_UB(x, y) ((x) / (y) + ((x) % (y) ? 1 : 0))

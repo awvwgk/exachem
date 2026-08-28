@@ -9,6 +9,10 @@
 #include "exachem/common/ec_nwmovecs.hpp"
 #include "exachem/common/txt_utils.hpp"
 
+#include <algorithm>
+#include <array>
+#include <cstring>
+
 bool ECNWChem::check_nwmovecs(std::string nwmovecsfile) {
   nwmovecs_exists = !nwmovecsfile.empty();
   if(nwmovecs_exists) {
@@ -33,28 +37,27 @@ void ECNWChem::write_nwmovecs(ChemEnv& chem_env, Matrix& C_a, std::vector<double
   const char* format      = "%a %b %d %H:%M:%S %Y";
   std::strftime(date.data(), date.size(), format, localTime);
 
-  char* header = new char[142];
-  memset(header, 0, 142);
-  memcpy(header + 96, "dft", 3);
-  memcpy(header + 116, date.data(), 26);
-  write_record<char>(movecs, header, 142);
+  std::array<char, 142> header{};
+  std::memcpy(header.data() + 96, "dft", 3);
+  std::memcpy(header.data() + 116, date.data(), 26);
+  write_record<char>(movecs, header.data(), 142);
 
   length = 20;
-  memset(header, 0, 20);
-  memcpy(header, "dft", 3);
-  write_record<char>(movecs, header, 20);
+  std::fill_n(header.begin(), 20, '\0');
+  std::memcpy(header.data(), "dft", 3);
+  write_record<char>(movecs, header.data(), 20);
 
   int64_t lentit = 7;
   length         = sizeof(lentit);
-  memcpy(header, "ExaChem", 7);
+  std::memcpy(header.data(), "ExaChem", 7);
   write_record<int64_t>(movecs, &lentit, length);
-  write_record<char>(movecs, header, 7);
+  write_record<char>(movecs, header.data(), 7);
 
   int64_t lenbas = 8;
   length         = sizeof(lenbas);
-  memcpy(header, "ao basis", 8);
+  std::memcpy(header.data(), "ao basis", 8);
   write_record<int64_t>(movecs, &lenbas, length);
-  write_record<char>(movecs, header, 8);
+  write_record<char>(movecs, header.data(), 8);
 
   int64_t nsets = 1;
   int64_t nbf   = C_a.rows();
@@ -81,7 +84,6 @@ void ECNWChem::write_nwmovecs(ChemEnv& chem_env, Matrix& C_a, std::vector<double
   write_record<double>(movecs, zero.data(), length);
 
   movecs.close();
-  delete[] header;
 }
 
 void ECNWChem::write_nwmovecs(ChemEnv& chem_env, Matrix& C_a, std::vector<double>& eps_a_vec,
@@ -101,28 +103,27 @@ void ECNWChem::write_nwmovecs(ChemEnv& chem_env, Matrix& C_a, std::vector<double
   const char* format      = "%a %b %d %H:%M:%S %Y";
   std::strftime(date.data(), date.size(), format, localTime);
 
-  char* header = new char[142];
-  memset(header, 0, 142);
-  memcpy(header + 96, "dft", 3);
-  memcpy(header + 116, date.data(), 26);
-  write_record<char>(movecs, header, 142);
+  std::array<char, 142> header{};
+  std::memcpy(header.data() + 96, "dft", 3);
+  std::memcpy(header.data() + 116, date.data(), 26);
+  write_record<char>(movecs, header.data(), 142);
 
   length = 20;
-  memset(header, 0, 20);
-  memcpy(header, "dft", 3);
-  write_record<char>(movecs, header, 20);
+  std::fill_n(header.begin(), 20, '\0');
+  std::memcpy(header.data(), "dft", 3);
+  write_record<char>(movecs, header.data(), 20);
 
   int64_t lentit = 7;
   length         = sizeof(lentit);
-  memcpy(header, "ExaChem", 7);
+  std::memcpy(header.data(), "ExaChem", 7);
   write_record<int64_t>(movecs, &lentit, length);
-  write_record<char>(movecs, header, 7);
+  write_record<char>(movecs, header.data(), 7);
 
   int64_t lenbas = 8;
   length         = sizeof(lenbas);
-  memcpy(header, "ao basis", 8);
+  std::memcpy(header.data(), "ao basis", 8);
   write_record<int64_t>(movecs, &lenbas, length);
-  write_record<char>(movecs, header, 8);
+  write_record<char>(movecs, header.data(), 8);
 
   int64_t              nsets = 2;
   int64_t              nbf   = C_a.rows();
@@ -160,7 +161,6 @@ void ECNWChem::write_nwmovecs(ChemEnv& chem_env, Matrix& C_a, std::vector<double
   write_record<double>(movecs, zero.data(), length);
 
   movecs.close();
-  delete[] header;
 }
 
 void ECNWChem::reorder_nwchem_orbitals(const bool is_spherical, const libint2::BasisSet& shells,

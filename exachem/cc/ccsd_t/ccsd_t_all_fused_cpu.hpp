@@ -11,6 +11,8 @@
 
 #include "exachem/cc/ccsd_t/fused_common.hpp"
 
+#include <vector>
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -104,13 +106,10 @@ void total_fused_ccsd_t_cpu(
     base_size_h3b * base_size_h2b * base_size_h1b * base_size_p6b * base_size_p5b * base_size_p4b;
 
   //
-  double* host_t3_d = (double*) malloc(sizeof(double) * size_tensor_t3);
-  double* host_t3_s = (double*) malloc(sizeof(double) * size_tensor_t3);
-
-  for(size_t i = 0; i < size_tensor_t3; i++) {
-    host_t3_d[i] = 0.000;
-    host_t3_s[i] = 0.000;
-  }
+  std::vector<double> host_t3_d_v(size_tensor_t3, 0.0);
+  std::vector<double> host_t3_s_v(size_tensor_t3, 0.0);
+  double*             host_t3_d = host_t3_d_v.data();
+  double*             host_t3_s = host_t3_s_v.data();
 
   //
   // for (size_t idx_ia6 = 0; idx_ia6 < 9; idx_ia6++){
@@ -622,8 +621,7 @@ void total_fused_ccsd_t_cpu(
 
   energy_l[1] += final_energy_2;
 
-  free(host_t3_d);
-  free(host_t3_s);
+  // host_t3_d/host_t3_s freed automatically when the *_v vectors go out of scope
 
   // printf ("E(4): %.14f, E(5): %.14f\n", host_energy_4, host_energy_5);
   //  printf

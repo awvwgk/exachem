@@ -11,6 +11,8 @@
 
 #include "exachem/cc/ccsd_t/fused_common.hpp"
 
+#include <span>
+
 void dev_mem_s(size_t, size_t, size_t, size_t, size_t, size_t);
 void dev_mem_d(size_t, size_t, size_t, size_t, size_t, size_t);
 
@@ -179,13 +181,21 @@ void ccsd_t_fully_fused_none_df_none_task(
 #if defined(USE_CUDA) || defined(USE_HIP) || defined(USE_DPCPP)
   if(!gpuEventQuery(*done_compute)) { gpuEventSynchronize(*done_compute); }
 
-  auto& memDevPool         = RMMMemoryManager::getInstance().getDeviceMemoryPool();
-  T*    dev_evl_sorted_h1b = static_cast<T*>(memDevPool.allocate(sizeof(T) * base_size_h1b));
-  T*    dev_evl_sorted_h2b = static_cast<T*>(memDevPool.allocate(sizeof(T) * base_size_h2b));
-  T*    dev_evl_sorted_h3b = static_cast<T*>(memDevPool.allocate(sizeof(T) * base_size_h3b));
-  T*    dev_evl_sorted_p4b = static_cast<T*>(memDevPool.allocate(sizeof(T) * base_size_p4b));
-  T*    dev_evl_sorted_p5b = static_cast<T*>(memDevPool.allocate(sizeof(T) * base_size_p5b));
-  T*    dev_evl_sorted_p6b = static_cast<T*>(memDevPool.allocate(sizeof(T) * base_size_p6b));
+  // Spans own these pool blocks; .data() feeds the CUDA/HIP/SYCL kernel APIs. The span
+  // carries its length, so each deallocate below matches its allocation by construction.
+  auto&        memDevPool         = RMMMemoryManager::getInstance().getDeviceMemoryPool();
+  std::span<T> dev_evl_h1b_span   = memDevPool.template allocate_span<T>(base_size_h1b);
+  std::span<T> dev_evl_h2b_span   = memDevPool.template allocate_span<T>(base_size_h2b);
+  std::span<T> dev_evl_h3b_span   = memDevPool.template allocate_span<T>(base_size_h3b);
+  std::span<T> dev_evl_p4b_span   = memDevPool.template allocate_span<T>(base_size_p4b);
+  std::span<T> dev_evl_p5b_span   = memDevPool.template allocate_span<T>(base_size_p5b);
+  std::span<T> dev_evl_p6b_span   = memDevPool.template allocate_span<T>(base_size_p6b);
+  T*           dev_evl_sorted_h1b = dev_evl_h1b_span.data();
+  T*           dev_evl_sorted_h2b = dev_evl_h2b_span.data();
+  T*           dev_evl_sorted_h3b = dev_evl_h3b_span.data();
+  T*           dev_evl_sorted_p4b = dev_evl_p4b_span.data();
+  T*           dev_evl_sorted_p5b = dev_evl_p5b_span.data();
+  T*           dev_evl_sorted_p6b = dev_evl_p6b_span.data();
 
   gpuMemcpyAsync<T>(dev_evl_sorted_h1b, host_evl_sorted_h1b, base_size_h1b, gpuMemcpyHostToDevice,
                     stream);
@@ -276,11 +286,11 @@ void ccsd_t_fully_fused_none_df_none_task(
     [&](sycl::handler& cgh) { cgh.host_task([=]() { hostEnergyReduce(reduceData); }); });
 #endif
 
-  memDevPool.deallocate(dev_evl_sorted_h1b, sizeof(T) * base_size_h1b);
-  memDevPool.deallocate(dev_evl_sorted_h2b, sizeof(T) * base_size_h2b);
-  memDevPool.deallocate(dev_evl_sorted_h3b, sizeof(T) * base_size_h3b);
-  memDevPool.deallocate(dev_evl_sorted_p4b, sizeof(T) * base_size_p4b);
-  memDevPool.deallocate(dev_evl_sorted_p5b, sizeof(T) * base_size_p5b);
-  memDevPool.deallocate(dev_evl_sorted_p6b, sizeof(T) * base_size_p6b);
+  memDevPool.deallocate(dev_evl_h1b_span);
+  memDevPool.deallocate(dev_evl_h2b_span);
+  memDevPool.deallocate(dev_evl_h3b_span);
+  memDevPool.deallocate(dev_evl_p4b_span);
+  memDevPool.deallocate(dev_evl_p5b_span);
+  memDevPool.deallocate(dev_evl_p6b_span);
 #endif
 }

@@ -9,8 +9,8 @@
 
 // (1) Pure FP64
 #include "exachem/cc/ccsd_t/ccsd_t_common.hpp"
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 // created by tc_gen_definition()

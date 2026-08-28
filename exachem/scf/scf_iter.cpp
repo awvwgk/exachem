@@ -326,9 +326,9 @@ exachem::scf::SCFIter<T>::compute_2bf_taskinfo(
     const auto s1        = blockid[0];
     auto       sp12_iter = scf_data.obs_shellpair_data.at(s1).begin();
 
-    const auto s2     = blockid[1];
-    const auto s2spl  = scf_data.obs_shellpair_list.at(s1);
-    const auto s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
+    const auto  s2     = blockid[1];
+    const auto& s2spl  = scf_data.obs_shellpair_list.at(s1);
+    const auto  s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
     if(s2_itr == s2spl.end()) return;
     auto s2_pos = std::distance(s2spl.begin(), s2_itr);
 
@@ -705,6 +705,7 @@ void exachem::scf::SCFIter<T>::compute_Vm12(ExecutionContext& ec, const ChemEnv&
 
     Tensor<T>::deallocate(S_BC);
     tamm::from_block_cyclic_tensor(V_sca, v_tmp);
+    Tensor<T>::deallocate(V_sca);
   }
 #else
   if(rank == 0) {
@@ -828,9 +829,9 @@ void exachem::scf::SCFIter<T>::compute_ri_jvec(ExecutionContext& ec, const ChemE
     auto n1        = obs[s1].size();
     auto sp12_iter = scf_data.obs_shellpair_data.at(s1).begin();
 
-    auto s2     = blockid[1];
-    auto s2spl  = scf_data.obs_shellpair_list.at(s1);
-    auto s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
+    auto        s2     = blockid[1];
+    const auto& s2spl  = scf_data.obs_shellpair_list.at(s1);
+    auto        s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
     if(s2_itr == s2spl.end()) return;
     auto s2_pos    = std::distance(s2spl.begin(), s2_itr);
     auto bf2_first = shell2bf[s2];
@@ -932,9 +933,9 @@ void exachem::scf::SCFIter<T>::compute_ri_jmat(ExecutionContext& ec, const ChemE
     auto n1        = obs[s1].size();
     auto sp12_iter = scf_data.obs_shellpair_data.at(s1).begin();
 
-    auto s2     = blockid[1];
-    auto s2spl  = scf_data.obs_shellpair_list.at(s1);
-    auto s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
+    auto        s2     = blockid[1];
+    const auto& s2spl  = scf_data.obs_shellpair_list.at(s1);
+    auto        s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
     if(s2_itr == s2spl.end()) return;
     auto s2_pos    = std::distance(s2spl.begin(), s2_itr);
     auto bf2_first = shell2bf[s2];
@@ -1181,9 +1182,9 @@ void exachem::scf::SCFIter<T>::compute_2bf(
     const auto n1        = obs[s1].size();
     auto       sp12_iter = scf_data.obs_shellpair_data.at(s1).begin();
 
-    auto s2     = blockid[1];
-    auto s2spl  = scf_data.obs_shellpair_list.at(s1);
-    auto s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
+    auto        s2     = blockid[1];
+    const auto& s2spl  = scf_data.obs_shellpair_list.at(s1);
+    auto        s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
     if(s2_itr == s2spl.end()) return;
     auto       s2_pos    = std::distance(s2spl.begin(), s2_itr);
     auto       bf2_first = shell2bf[s2];
@@ -1511,9 +1512,9 @@ void exachem::scf::SCFIter<T>::compute_2bf_hubbard(
     const auto n1        = obs[s1].size();
     auto       sp12_iter = scf_data.obs_shellpair_data.at(s1).begin();
 
-    auto s2     = blockid[1];
-    auto s2spl  = scf_data.obs_shellpair_list.at(s1);
-    auto s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
+    auto        s2     = blockid[1];
+    const auto& s2spl  = scf_data.obs_shellpair_list.at(s1);
+    auto        s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
     if(s2_itr == s2spl.end()) return;
     auto       s2_pos    = std::distance(s2spl.begin(), s2_itr);
     auto       bf2_first = shell2bf[s2];
@@ -2181,9 +2182,9 @@ void exachem::scf::SCFIter<T>::compute_2bf_deriv(
     const auto n1        = obs[s1].size();
     auto       sp12_iter = scf_data.obs_shellpair_data.at(s1).begin();
 
-    auto s2     = blockid[1];
-    auto s2spl  = scf_data.obs_shellpair_list.at(s1);
-    auto s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
+    auto        s2     = blockid[1];
+    const auto& s2spl  = scf_data.obs_shellpair_list.at(s1);
+    auto        s2_itr = std::find(s2spl.begin(), s2spl.end(), s2);
     if(s2_itr == s2spl.end()) return;
     auto       s2_pos    = std::distance(s2spl.begin(), s2_itr);
     auto       bf2_first = shell2bf[s2];

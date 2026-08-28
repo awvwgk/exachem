@@ -261,11 +261,11 @@ void exachem::scf::SCFQed<T>::compute_qed_emult_ints(ExecutionContext& ec, const
         // if (s2>s1) continue;
 
         if(s2 > s1) {
-          auto s2spl = spvars.obs_shellpair_list.at(s2);
+          const auto& s2spl = spvars.obs_shellpair_list.at(s2);
           if(std::find(s2spl.begin(), s2spl.end(), s1) == s2spl.end()) continue;
         }
         else {
-          auto s2spl = spvars.obs_shellpair_list.at(s1);
+          const auto& s2spl = spvars.obs_shellpair_list.at(s1);
           if(std::find(s2spl.begin(), s2spl.end(), s2) == s2spl.end()) continue;
         }
 

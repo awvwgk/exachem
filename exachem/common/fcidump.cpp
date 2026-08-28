@@ -95,7 +95,7 @@ void fcidump::write_2el_ints(std::ofstream& file, SystemData& sys_data, Tensor<T
             if(nonredundant(ix, jx, kx, lx, is_uhf) && nonzero(buf[c])) {
               file << std::setw(16) << buf[c] << std::setw(6) << offset + ix << std::setw(4)
                    << offset + jx << std::setw(4) << offset + kx << std::setw(4) << offset + lx
-                   << std::endl;
+                   << '\n';
             }
           }
         }
@@ -153,7 +153,7 @@ void fcidump::write_1el_ints(std::ofstream& file, SystemData& sys_data, Tensor<T
 
         if((ix >= jx) && nonzero(buf[c])) {
           file << std::setw(16) << buf[c] << std::setw(6) << ix << std::setw(4) << jx
-               << std::setw(4) << 0 << std::setw(4) << 0 << std::setw(4) << std::endl;
+               << std::setw(4) << 0 << std::setw(4) << 0 << std::setw(4) << '\n';
         }
       }
     }

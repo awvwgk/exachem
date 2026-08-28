@@ -54,11 +54,14 @@ public:
     return total_size;
   }
 
-  Tensor<T> operator()(std::string block) {
-    if(tmap.find(block) == tmap.end())
+  Tensor<T> operator()(const std::string& block) {
+    // Single lookup: the previous find()/operator[] pair walked the tree twice
+    // on every call, and this is invoked once per tensor reference per CC iteration.
+    auto iter = tmap.find(block);
+    if(iter == tmap.end())
       tamm_terminate("Error: tensor [" + tname + "]: block [" + block +
                      "] requested does not exist");
-    return tmap[block];
+    return iter->second;
   }
 
   TiledIndexSpaceVec construct_tis(const TiledIndexSpace& MO, const TiledIndexSpaceVec tis,

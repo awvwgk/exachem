@@ -71,7 +71,7 @@ SCFGauxc<T>::setup_gauxc(ExecutionContext& ec, const ChemEnv& chem_env,
           GauXC::BatchSize((size_t) scf_options.xc_batch_size), radquad_map.at(xc_radquad_str),
           grid_map.at(xc_grid_str));
 
-  auto gauxc_molmeta = std::make_shared<GauXC::MolMeta>(gauxc_mol);
+  [[maybe_unused]] auto gauxc_molmeta = std::make_shared<GauXC::MolMeta>(gauxc_mol);
 
   auto xc_space_str = scf_options.xc_exec_space;
   std::transform(xc_space_str.begin(), xc_space_str.end(), xc_space_str.begin(), ::tolower);

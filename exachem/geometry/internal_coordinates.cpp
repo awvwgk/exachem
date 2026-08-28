@@ -280,9 +280,8 @@ InternalCoordinates InternalCoords(ExecutionContext& ec, ChemEnv& chem_env, bool
 
   std::tuple<std::vector<std::vector<int>>, Eigen::MatrixXd> cluster_pair =
     InternalCoordinateUtils::get_clusters(bondmatrix);
-  auto fragments = std::get<0>(cluster_pair);
-  auto C         = std::get<1>(cluster_pair);
-  auto C_total   = C;
+  auto C       = std::get<1>(cluster_pair);
+  auto C_total = C;
 
   double shift = 0.0;
   while(!((C_total.array() == 1.0).all())) {

@@ -7,6 +7,12 @@
  */
 
 #include "exachem/cc/ccsd/cd_ccsd_os_ann.hpp"
+#include <span>
+
+#include "exachem/cc/ccsd/cd_ccsd_preconditioner.hpp"
+#include "exachem/cc/krylov_solvers.hpp"
+
+using namespace exachem::cc::solvers;
 
 #include "exachem/cc/ccsd/cd_ccsd_preconditioner.hpp"
 #include "exachem/cc/krylov_solvers.hpp"
@@ -270,9 +276,9 @@ void CD_CCSD_OS<T>::ccsd_t2_os(Scheduler& sch, const TiledIndexSpace& MO, const 
   int   a22_flag = 0;
   auto& oprof    = tamm::OpProfiler::instance();
 
-  auto compute_v4_term = [=, &a22_flag, &oprof](const IndexVector& cblkid, span<T> cbuf) {
-    Tensor<T>        a22_tmp;
-    LabeledTensor<T>*lhsp_{nullptr}, *rhs1p_{nullptr}, *rhs2p_{nullptr};
+  auto compute_v4_term = [=, this, &a22_flag, &oprof](const IndexVector& cblkid, span<T> cbuf) {
+    Tensor<T>                         a22_tmp;
+    std::unique_ptr<LabeledTensor<T>> lhsp_, rhs1p_, rhs2p_;
 
     auto [cind]                       = CI.labels<1>("all");
     auto [p1_va, p2_va, p3_va, p4_va] = v_alpha_os.labels<4>("all");
@@ -280,21 +286,21 @@ void CD_CCSD_OS<T>::ccsd_t2_os(Scheduler& sch, const TiledIndexSpace& MO, const 
 
     if(a22_flag == 1) {
       a22_tmp = {v_alpha_os, v_alpha_os, v_alpha_os, v_alpha_os};
-      lhsp_   = new LabeledTensor<T>{a22_tmp, {p3_va, p4_va, p2_va, p1_va}};
-      rhs1p_  = new LabeledTensor<T>{_a021_os("aa"), {p3_va, p2_va, cind}};
-      rhs2p_  = new LabeledTensor<T>{_a021_os("aa"), {p4_va, p1_va, cind}};
+      lhsp_   = std::make_unique<LabeledTensor<T>>(a22_tmp, p3_va, p4_va, p2_va, p1_va);
+      rhs1p_  = std::make_unique<LabeledTensor<T>>(_a021_os("aa"), p3_va, p2_va, cind);
+      rhs2p_  = std::make_unique<LabeledTensor<T>>(_a021_os("aa"), p4_va, p1_va, cind);
     }
     else if(a22_flag == 2) {
       a22_tmp = {v_beta_os, v_beta_os, v_beta_os, v_beta_os};
-      lhsp_   = new LabeledTensor<T>{a22_tmp, {p3_vb, p4_vb, p2_vb, p1_vb}};
-      rhs1p_  = new LabeledTensor<T>{_a021_os("bb"), {p3_vb, p2_vb, cind}};
-      rhs2p_  = new LabeledTensor<T>{_a021_os("bb"), {p4_vb, p1_vb, cind}};
+      lhsp_   = std::make_unique<LabeledTensor<T>>(a22_tmp, p3_vb, p4_vb, p2_vb, p1_vb);
+      rhs1p_  = std::make_unique<LabeledTensor<T>>(_a021_os("bb"), p3_vb, p2_vb, cind);
+      rhs2p_  = std::make_unique<LabeledTensor<T>>(_a021_os("bb"), p4_vb, p1_vb, cind);
     }
     else if(a22_flag == 3) {
       a22_tmp = {v_alpha_os, v_beta_os, v_alpha_os, v_beta_os};
-      lhsp_   = new LabeledTensor<T>{a22_tmp, {p3_va, p4_vb, p2_va, p1_vb}};
-      rhs1p_  = new LabeledTensor<T>{_a021_os("aa"), {p3_va, p2_va, cind}};
-      rhs2p_  = new LabeledTensor<T>{_a021_os("bb"), {p4_vb, p1_vb, cind}};
+      lhsp_   = std::make_unique<LabeledTensor<T>>(a22_tmp, p3_va, p4_vb, p2_va, p1_vb);
+      rhs1p_  = std::make_unique<LabeledTensor<T>>(_a021_os("aa"), p3_va, p2_va, cind);
+      rhs2p_  = std::make_unique<LabeledTensor<T>>(_a021_os("bb"), p4_vb, p1_vb, cind);
     }
     else { tamm_terminate("[CCSD-OS] This line should be unreachable"); }
 
@@ -401,7 +407,7 @@ void CD_CCSD_OS<T>::ccsd_t2_os(Scheduler& sch, const TiledIndexSpace& MO, const 
     auto atensor = rhs1_.tensor();
     auto btensor = rhs2_.tensor();
 
-    std::vector<AddBuf<TensorElType1, TensorElType2, TensorElType3>*> add_bufs;
+    std::vector<std::unique_ptr<AddBuf<TensorElType1, TensorElType2, TensorElType3>>> add_bufs;
 
     // compute blockids from the loop indices. itval is the loop index
     // execute_bufacc(ec, hw);
@@ -434,19 +440,24 @@ void CD_CCSD_OS<T>::ccsd_t2_os(Scheduler& sch, const TiledIndexSpace& MO, const 
     SizeVec cdims_sz;
     for(const auto v: cdims) { cdims_sz.push_back(v); }
 
-    AddBuf<TensorElType1, TensorElType2, TensorElType3>* ab{nullptr};
+    std::unique_ptr<AddBuf<TensorElType1, TensorElType2, TensorElType3>> ab_owner;
 #if defined(USE_CUDA) || defined(USE_HIP) || defined(USE_DPCPP)
     TensorElType2* th_a{nullptr};
     TensorElType3* th_b{nullptr};
     auto&          thandle = GPUStreamPool::getInstance().getStream();
 
-    ab =
-      new AddBuf<TensorElType1, TensorElType2, TensorElType3>{th_a, th_b, {}, translated_cblockid};
+    ab_owner = std::make_unique<AddBuf<TensorElType1, TensorElType2, TensorElType3>>(
+      th_a, th_b, nullptr, translated_cblockid);
+    // Non-owning observer; ownership moves into add_bufs below. Taken before the move, since
+    // unique_ptr::get() would return null afterwards. GPU-only: the CPU path reaches the same
+    // object through add_bufs[0].get().
+    AddBuf<TensorElType1, TensorElType2, TensorElType3>* ab = ab_owner.get();
 #else
     gpuStream_t thandle{};
-    ab = new AddBuf<TensorElType1, TensorElType2, TensorElType3>{ctensor, {}, translated_cblockid};
+    ab_owner = std::make_unique<AddBuf<TensorElType1, TensorElType2, TensorElType3>>(
+      ctensor, nullptr, translated_cblockid);
 #endif
-    add_bufs.push_back(ab);
+    add_bufs.push_back(std::move(ab_owner));
 
     // LabelLoopNest inner_loop{reduction_lbls};
     LabelLoopNest inner_loop{reduction_labels};
@@ -460,16 +471,15 @@ void CD_CCSD_OS<T>::ccsd_t2_os(Scheduler& sch, const TiledIndexSpace& MO, const 
 #if(defined(USE_CUDA) || defined(USE_HIP) || defined(USE_DPCPP))
     auto& memDevicePool = tamm::RMMMemoryManager::getInstance().getDeviceMemoryPool();
 
+    std::span<TensorElType1> cbuf_dev_span;
+    std::span<TensorElType1> cbuf_tmp_dev_span;
     if(hw == ExecutionHW::GPU) {
-      cbuf_dev_ptr =
-        static_cast<TensorElType1*>(memDevicePool.allocate(csize * sizeof(TensorElType1)));
+      cbuf_dev_ptr = (cbuf_dev_span = memDevicePool.allocate_span<TensorElType1>(csize)).data();
       cbuf_tmp_dev_ptr =
-        static_cast<TensorElType1*>(memDevicePool.allocate(csize * sizeof(TensorElType1)));
+        (cbuf_tmp_dev_span = memDevicePool.allocate_span<TensorElType1>(csize)).data();
 
-      gpuMemsetAsync(reinterpret_cast<void*&>(cbuf_dev_ptr), csize * sizeof(TensorElType1),
-                     thandle);
-      gpuMemsetAsync(reinterpret_cast<void*&>(cbuf_tmp_dev_ptr), csize * sizeof(TensorElType1),
-                     thandle);
+      gpuMemsetAsync(cbuf_dev_ptr, csize * sizeof(TensorElType1), thandle);
+      gpuMemsetAsync(cbuf_tmp_dev_ptr, csize * sizeof(TensorElType1), thandle);
     }
 #endif
 
@@ -505,10 +515,12 @@ void CD_CCSD_OS<T>::ccsd_t2_os(Scheduler& sch, const TiledIndexSpace& MO, const 
       const size_t asize = atensor.block_size(translated_ablockid);
       const size_t bsize = btensor.block_size(translated_bblockid);
 
-      TensorElType2* abuf{nullptr};
-      TensorElType3* bbuf{nullptr};
-      abuf = static_cast<TensorElType2*>(memHostPool.allocate(asize * sizeof(TensorElType2)));
-      bbuf = static_cast<TensorElType3*>(memHostPool.allocate(bsize * sizeof(TensorElType3)));
+      TensorElType2*           abuf{nullptr};
+      TensorElType3*           bbuf{nullptr};
+      std::span<TensorElType2> abuf_span = memHostPool.allocate_span<TensorElType2>(asize);
+      std::span<TensorElType3> bbuf_span = memHostPool.allocate_span<TensorElType3>(bsize);
+      abuf                               = abuf_span.data();
+      bbuf                               = bbuf_span.data();
 
       {
         TimerGuard tg_get{&oprof.multOpGetTime};
@@ -531,16 +543,18 @@ void CD_CCSD_OS<T>::ccsd_t2_os(Scheduler& sch, const TiledIndexSpace& MO, const 
         TimerGuard                                           tg_bc{&oprof.multOpBCTime};
         AddBuf<TensorElType1, TensorElType2, TensorElType3>* abptr{nullptr};
 #if defined(USE_CUDA) || defined(USE_HIP) || defined(USE_DPCPP)
+        // Spans own the device blocks; AddBuf keeps the raw pointers it needs for the
+        // kernel call. Freeing the span guarantees the size matches the allocation.
+        std::span<TensorElType2> ta_span;
+        std::span<TensorElType3> tb_span;
         if(hw == ExecutionHW::GPU) {
-          abptr = ab;
-          ab->ta_ =
-            static_cast<TensorElType2*>(memDevicePool.allocate(asize * sizeof(TensorElType2)));
-          ab->tb_ =
-            static_cast<TensorElType3*>(memDevicePool.allocate(bsize * sizeof(TensorElType3)));
+          abptr   = ab;
+          ab->ta_ = (ta_span = memDevicePool.allocate_span<TensorElType2>(asize)).data();
+          ab->tb_ = (tb_span = memDevicePool.allocate_span<TensorElType3>(bsize)).data();
         }
-        else abptr = add_bufs[0];
+        else abptr = add_bufs[0].get();
 #else
-        abptr = add_bufs[0];
+        abptr = add_bufs[0].get();
 #endif
         abptr->abuf_ = abuf;
         abptr->bbuf_ = bbuf;
@@ -555,14 +569,14 @@ void CD_CCSD_OS<T>::ccsd_t2_os(Scheduler& sch, const TiledIndexSpace& MO, const 
 
 #if(defined(USE_CUDA) || defined(USE_HIP) || defined(USE_DPCPP))
         if(hw == ExecutionHW::GPU) {
-          memDevicePool.deallocate(ab->ta_, asize * sizeof(TensorElType2));
-          memDevicePool.deallocate(ab->tb_, bsize * sizeof(TensorElType3));
+          memDevicePool.deallocate(ta_span);
+          memDevicePool.deallocate(tb_span);
         }
 #endif
       } // A * B
 
-      memHostPool.deallocate(abuf, asize * sizeof(TensorElType2));
-      memHostPool.deallocate(bbuf, bsize * sizeof(TensorElType3));
+      memHostPool.deallocate(abuf_span);
+      memHostPool.deallocate(bbuf_span);
     } // end of reduction loop
 
     // add the computed update to the tensor
@@ -570,9 +584,10 @@ void CD_CCSD_OS<T>::ccsd_t2_os(Scheduler& sch, const TiledIndexSpace& MO, const 
 #if(defined(USE_CUDA) || defined(USE_HIP) || defined(USE_DPCPP))
       // copy to host
       if(hw == ExecutionHW::GPU) {
-        TimerGuard     tg_bc{&oprof.multOpBCTime};
-        TensorElType1* cbuf_tmp{nullptr};
-        cbuf_tmp = static_cast<TensorElType1*>(memHostPool.allocate(csize * sizeof(TensorElType1)));
+        TimerGuard               tg_bc{&oprof.multOpBCTime};
+        TensorElType1*           cbuf_tmp{nullptr};
+        std::span<TensorElType1> cbuf_tmp_span = memHostPool.allocate_span<TensorElType1>(csize);
+        cbuf_tmp                               = cbuf_tmp_span.data();
         std::memset(cbuf_tmp, 0, csize * sizeof(TensorElType1));
         {
           TimerGuard tg_copy{&oprof.multOpCopyTime};
@@ -583,21 +598,18 @@ void CD_CCSD_OS<T>::ccsd_t2_os(Scheduler& sch, const TiledIndexSpace& MO, const 
         // cbuf+=cbuf_tmp
         blas::axpy(csize, TensorElType1{1}, cbuf_tmp, 1, cbuf.data(), 1);
 
-        memHostPool.deallocate(cbuf_tmp, csize * sizeof(TensorElType1));
+        memHostPool.deallocate(cbuf_tmp_span);
 
-        memDevicePool.deallocate(static_cast<void*>(cbuf_dev_ptr), csize * sizeof(TensorElType1));
-        memDevicePool.deallocate(static_cast<void*>(cbuf_tmp_dev_ptr),
-                                 csize * sizeof(TensorElType1));
+        memDevicePool.deallocate(cbuf_dev_span);
+        memDevicePool.deallocate(cbuf_tmp_dev_span);
       }
 #endif
     }
 
-    for(auto& ab: add_bufs) delete ab;
+    // add_bufs owns the AddBuf objects via unique_ptr; clearing frees them
     add_bufs.clear();
 
-    delete lhsp_;
-    delete rhs1p_;
-    delete rhs2p_;
+    // lhsp_/rhs1p_/rhs2p_ freed automatically when their unique_ptrs go out of scope
   };
 
   a22_aaaa_os = Tensor<T>{{v_alpha_os, v_alpha_os, v_alpha_os, v_alpha_os}, compute_v4_term};

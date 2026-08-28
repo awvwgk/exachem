@@ -10,11 +10,11 @@
 /*-------------hybrid execution------------*/
 
 #include "exachem/cc/ccsd_t/ccsd_t_common.hpp"
-#include <assert.h>
+#include <cassert>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <iomanip>
-#include <stdio.h>
-#include <stdlib.h>
 
 std::string check_memory_req(const int cc_t_ts, const int nbf) {
   size_t      total_gpu_mem{0};

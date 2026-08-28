@@ -8,6 +8,9 @@
 
 #include "exachem/cc/gfcc/gfccsd_driver.hpp"
 
+#include <memory>
+#include <vector>
+
 namespace exachem::cc::gfcc {
 Tensor<double> t2v2_o, lt12_o_a, lt12_o_b, ix1_1_1_a, ix1_1_1_b, ix2_1_aaaa, ix2_1_abab, ix2_1_bbbb,
   ix2_1_baba, ix2_2_a, ix2_2_b, ix2_3_a, ix2_3_b, ix2_4_aaaa, ix2_4_abab, ix2_4_bbbb, ix2_5_aaaa,
@@ -67,9 +70,10 @@ void GFCCSD_Driver<T>::write_string_to_disk(ExecutionContext& ec, const std::str
    * and displacements for each rank
    */
 
-  int              totlen = 0;
-  std::vector<int> displs;
-  char*            combined_string = nullptr;
+  int               totlen = 0;
+  std::vector<int>  displs;
+  std::vector<char> combined_buf;
+  char*             combined_string = nullptr;
 
   if(rank == 0) {
     displs.resize(size, 0);
@@ -83,9 +87,9 @@ void GFCCSD_Driver<T>::write_string_to_disk(ExecutionContext& ec, const std::str
     }
 
     /* allocate string, pre-fill with spaces and null terminator */
-    combined_string = new char[totlen];
-    for(int i = 0; i < totlen - 1; i++) combined_string[i] = ' ';
-    combined_string[totlen - 1] = '\0';
+    combined_buf.assign(totlen, ' ');
+    combined_buf[totlen - 1] = '\0';
+    combined_string          = combined_buf.data();
   }
 
   // Gather strings from all ranks in pg
@@ -97,7 +101,6 @@ void GFCCSD_Driver<T>::write_string_to_disk(ExecutionContext& ec, const std::str
     if(!out) std::cerr << "Error opening file " << filename << std::endl;
     out << combined_string << std::endl;
     out.close();
-    delete[] combined_string;
   }
 }
 
@@ -1671,7 +1674,7 @@ void GFCCSD_Driver<T>::gfccsd_driver(ExecutionContext& ec, ChemEnv& chem_env) {
                       << std::endl;
           auto cc_t1 = std::chrono::high_resolution_clock::now();
 
-          AtomicCounter* ac = new AtomicCounterGA(ec.pg(), 1);
+          std::unique_ptr<AtomicCounter> ac = std::make_unique<AtomicCounterGA>(ec.pg(), 1);
           ac->allocate(0);
           int64_t taskcount = 0;
           int64_t next      = ac->fetch_add(0, 1);
@@ -1705,7 +1708,6 @@ void GFCCSD_Driver<T>::gfccsd_driver(ExecutionContext& ec, ChemEnv& chem_env) {
 
           ec.pg().barrier();
           ac->deallocate();
-          delete ac;
 
           write_string_to_disk(ec, spfe.str(), extrap_file);
           if(rank == 0) {
@@ -2193,7 +2195,7 @@ void GFCCSD_Driver<T>::gfccsd_driver(ExecutionContext& ec, ChemEnv& chem_env) {
                << "--------------------extrapolate & converge-----------------------" << std::endl;
         auto cc_t1 = std::chrono::high_resolution_clock::now();
 
-        AtomicCounter* ac = new AtomicCounterGA(ec.pg(), 1);
+        std::unique_ptr<AtomicCounter> ac = std::make_unique<AtomicCounterGA>(ec.pg(), 1);
         ac->allocate(0);
         int64_t taskcount = 0;
         int64_t next      = ac->fetch_add(0, 1);
@@ -2226,7 +2228,6 @@ void GFCCSD_Driver<T>::gfccsd_driver(ExecutionContext& ec, ChemEnv& chem_env) {
 
         ec.pg().barrier();
         ac->deallocate();
-        delete ac;
 
         write_string_to_disk(ec, spfe.str(), extrap_file);
         if(rank == 0) {
@@ -3111,7 +3112,7 @@ void GFCCSD_Driver<T>::gfccsd_driver(ExecutionContext& ec, ChemEnv& chem_env) {
                << "--------------------extrapolate & converge-----------------------" << std::endl;
         auto cc_t1 = std::chrono::high_resolution_clock::now();
 
-        AtomicCounter* ac = new AtomicCounterGA(ec.pg(), 1);
+        std::unique_ptr<AtomicCounter> ac = std::make_unique<AtomicCounterGA>(ec.pg(), 1);
         ac->allocate(0);
         int64_t taskcount = 0;
         int64_t next      = ac->fetch_add(0, 1);
@@ -3150,7 +3151,6 @@ void GFCCSD_Driver<T>::gfccsd_driver(ExecutionContext& ec, ChemEnv& chem_env) {
 
         ec.pg().barrier();
         ac->deallocate();
-        delete ac;
 
         write_string_to_disk(ec, spfe.str(), extrap_file);
         if(rank == 0) {
@@ -3681,7 +3681,7 @@ void GFCCSD_Driver<T>::gfccsd_driver(ExecutionContext& ec, ChemEnv& chem_env) {
                << "--------------------extrapolate & converge-----------------------" << std::endl;
         auto cc_t1 = std::chrono::high_resolution_clock::now();
 
-        AtomicCounter* ac = new AtomicCounterGA(ec.pg(), 1);
+        std::unique_ptr<AtomicCounter> ac = std::make_unique<AtomicCounterGA>(ec.pg(), 1);
         ac->allocate(0);
         int64_t taskcount = 0;
         int64_t next      = ac->fetch_add(0, 1);
@@ -3713,7 +3713,6 @@ void GFCCSD_Driver<T>::gfccsd_driver(ExecutionContext& ec, ChemEnv& chem_env) {
 
         ec.pg().barrier();
         ac->deallocate();
-        delete ac;
 
         write_string_to_disk(ec, spfe.str(), extrap_file);
         if(rank == 0) {

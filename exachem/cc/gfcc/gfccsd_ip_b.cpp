@@ -45,7 +45,6 @@ void GFCCSD_IP_B_Driver<T>::gfccsd_driver_ip_b(
   
     const int noa = chem_env.sys_data.n_occ_alpha;
     const int nob = chem_env.sys_data.n_occ_beta;
-    const int total_orbitals = chem_env.sys_data.nmo;
   
     const TiledIndexSpace& O = MO("occ");
     const TiledIndexSpace& V = MO("virt");
